@@ -6,37 +6,50 @@
 
       const branch = "main"; 
 alert('image editing');
-function enableAllImageEditing() {
-  const imageElements = [];
+async function enableAllImageEditing() {
+  const elements = [];
 
-  // 1️⃣ Collect all <img> elements
+  // 1️⃣ Collect all <img> tags
   document.querySelectorAll('img').forEach(img => {
-    imageElements.push({ element: img, type: 'img', src: img.src });
+    elements.push({ element: img, type: 'img', src: img.src });
   });
 
-  // 2️⃣ Collect all elements with inline background images
+  // 2️⃣ Collect all elements with inline background-image
   document.querySelectorAll('*[style]').forEach(el => {
     const bg = el.style.backgroundImage;
     const match = bg.match(/url\(["']?(.*?)["']?\)/);
     if (match && match[1]) {
-      const src = match[1];
-      imageElements.push({ element: el, type: 'background', src });
+      elements.push({ element: el, type: 'background-inline', src: match[1] });
     }
   });
 
-  // 3️⃣ Apply edit buttons
-  imageElements.forEach(({ element, type, src }) => {
+  // 3️⃣ Collect all elements with computed background-image (from external CSS)
+  document.querySelectorAll('*').forEach(el => {
+    const bg = getComputedStyle(el).backgroundImage;
+    const match = bg && bg.match(/url\(["']?(.*?)["']?\)/);
+    if (match && match[1] && !elements.find(e => e.element === el)) {
+      elements.push({ element: el, type: 'background-computed', src: match[1] });
+    }
+  });
+
+  console.log("Editable elements found:", elements);
+
+  // 4️⃣ Attach edit UI
+  elements.forEach(({ element, type, src }) => {
     if (element.parentElement.querySelector('.edit-btn')) return;
 
     const wrapper = document.createElement('div');
     wrapper.style.position = 'relative';
-    wrapper.style.display = 'inline-block';
+    wrapper.style.display = getComputedStyle(element).display === 'block' ? 'block' : 'inline-block';
+    wrapper.style.width = element.offsetWidth + 'px';
+    wrapper.style.height = element.offsetHeight + 'px';
+    wrapper.style.overflow = 'hidden';
 
-    // Wrap the element
+    // Insert wrapper before element
     element.parentElement.insertBefore(wrapper, element);
     wrapper.appendChild(element);
 
-    // Create pencil button
+    // Pencil edit button
     const editBtn = document.createElement('button');
     editBtn.innerHTML = '🖉';
     editBtn.className = 'edit-btn';
@@ -110,7 +123,7 @@ function enableAllImageEditing() {
 
         if (type === 'img') {
           element.src = imageBase64;
-        } else if (type === 'background') {
+        } else {
           element.style.backgroundImage = `url(${imageBase64})`;
         }
       } else {
@@ -120,15 +133,12 @@ function enableAllImageEditing() {
   });
 }
 
-
-// Extract the GitHub file path from image source (src)
+// Utilities remain the same:
 function extractRepoPath(src) {
   try {
     const url = new URL(src, window.location.origin);
     const path = url.pathname;
-
     if (path.includes("/assets/images/")) {
-      console.log('path: ', path)
       return "public" + path;
     }
   } catch (e) {
@@ -137,17 +147,15 @@ function extractRepoPath(src) {
   return null;
 }
 
-// Convert image file to base64
 function toBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => resolve(reader.result);
-    reader.onerror = (error) => reject(error);
+    reader.onerror = error => reject(error);
   });
 }
 
-// Fetch the latest SHA of the file in the GitHub repository
 async function getLatestSha(filePath) {
   try {
     const res = await fetch(
@@ -169,5 +177,5 @@ async function getLatestSha(filePath) {
   return null;
 }
 
-// Run the function when the page is loaded
 document.addEventListener('DOMContentLoaded', enableAllImageEditing);
+
