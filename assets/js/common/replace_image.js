@@ -7,74 +7,74 @@
       const branch = "main"; 
 alert('image editing');
 function enableAllImageEditing() {
-      alert('into image editing');
-  const images = document.querySelectorAll('img');
+  const imageElements = [];
 
-  images.forEach((img, index) => {
-    if (img.parentElement.querySelector('.edit-btn')) return;
+  // 1️⃣ Collect all <img> elements
+  document.querySelectorAll('img').forEach(img => {
+    imageElements.push({ element: img, type: 'img', src: img.src });
+  });
 
-    // Create wrapper to position the button correctly
+  // 2️⃣ Collect all elements with inline background images
+  document.querySelectorAll('*[style]').forEach(el => {
+    const bg = el.style.backgroundImage;
+    const match = bg.match(/url\(["']?(.*?)["']?\)/);
+    if (match && match[1]) {
+      const src = match[1];
+      imageElements.push({ element: el, type: 'background', src });
+    }
+  });
+
+  // 3️⃣ Apply edit buttons
+  imageElements.forEach(({ element, type, src }) => {
+    if (element.parentElement.querySelector('.edit-btn')) return;
+
     const wrapper = document.createElement('div');
     wrapper.style.position = 'relative';
     wrapper.style.display = 'inline-block';
-    
-    // Insert wrapper before the image and move the image inside it
-    img.parentElement.insertBefore(wrapper, img);
-    wrapper.appendChild(img);
 
-    // Create the pencil edit button
+    // Wrap the element
+    element.parentElement.insertBefore(wrapper, element);
+    wrapper.appendChild(element);
+
+    // Create pencil button
     const editBtn = document.createElement('button');
-    editBtn.innerHTML = '🖉'; // Pencil icon
+    editBtn.innerHTML = '🖉';
     editBtn.className = 'edit-btn';
-    editBtn.style.position = 'absolute';
-    editBtn.style.top = '5px';
-    editBtn.style.right = '5px';
-    editBtn.style.background = '#fff';
-    editBtn.style.border = '1px solid #ccc';
-    editBtn.style.borderRadius = '50%';
-    editBtn.style.padding = '5px';
-    editBtn.style.cursor = 'pointer';
-    editBtn.style.zIndex = '9999'; // Ensure it's above any other elements
-    editBtn.style.transition = 'all 0.3s ease-in-out'; // Smooth transition for animations
-    editBtn.title = 'Edit Image';
-
-    // Append the button to the wrapper
+    Object.assign(editBtn.style, {
+      position: 'absolute',
+      top: '5px',
+      right: '5px',
+      background: '#fff',
+      border: '1px solid #ccc',
+      borderRadius: '50%',
+      padding: '5px',
+      cursor: 'pointer',
+      zIndex: '9999',
+      transition: 'all 0.3s ease-in-out'
+    });
     wrapper.appendChild(editBtn);
 
-    // Hidden file input to upload new image
+    // Hidden file input
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = 'image/*';
     fileInput.style.display = 'none';
     wrapper.appendChild(fileInput);
 
-    // Show file input when the pencil button is clicked
-    editBtn.addEventListener('click', () => {
-      fileInput.click();
-    });
+    editBtn.addEventListener('click', () => fileInput.click());
 
-    // Handle file input change (when a new image is selected)
     fileInput.addEventListener('change', async () => {
       const file = fileInput.files[0];
       if (!file) return;
 
-      // Convert the selected image file to Base64
       const base64Content = await toBase64(file);
-
-      // Dynamically generate the GitHub file path from the image's src
-      const imageSrc = img.getAttribute('src');
-      console.log('imageSrc: ', imageSrc)
-      const repoImagePath = extractRepoPath(imageSrc);
-      console.log('repoImagePath: ', repoImagePath)
-      commitMessage = repoImagePath
-      console.log('commitMessage: ', commitMessage)
+      const repoImagePath = extractRepoPath(src);
       if (!repoImagePath) {
         alert('Unable to resolve GitHub file path from image src.');
         return;
       }
 
       const sha = await getLatestSha(repoImagePath);
-
       const response = await fetch(
         `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${repoImagePath}`,
         {
@@ -85,7 +85,7 @@ function enableAllImageEditing() {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            message: commitMessage,
+            message: repoImagePath,
             content: base64Content.split(",")[1],
             sha: sha,
             branch: branch
@@ -94,10 +94,7 @@ function enableAllImageEditing() {
       );
 
       const result = await response.json();
-      console.log("Upload result:", result);
-
       if (result.content && result.commit) {
-        // Fetch the updated image blob and set it to the image element
         const blobSha = result.content.sha;
         const latest = await fetch(
           `https://api.github.com/repos/${repoOwner}/${repoName}/git/blobs/${blobSha}`,
@@ -110,13 +107,19 @@ function enableAllImageEditing() {
         );
         const latestData = await latest.json();
         const imageBase64 = "data:image/png;base64," + latestData.content;
-        img.src = imageBase64;
+
+        if (type === 'img') {
+          element.src = imageBase64;
+        } else if (type === 'background') {
+          element.style.backgroundImage = `url(${imageBase64})`;
+        }
       } else {
         alert("Upload failed: " + result.message);
       }
     });
   });
 }
+
 
 // Extract the GitHub file path from image source (src)
 function extractRepoPath(src) {
