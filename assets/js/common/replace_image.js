@@ -6,38 +6,43 @@
 
       const branch = "main"; 
 alert('image editing');
+document.addEventListener('DOMContentLoaded', enableAllImageEditing);
+
 async function enableAllImageEditing() {
   const elements = [];
 
-  // 1️⃣ Collect all <img> tags
+  // 1️⃣ Collect <img> elements
   document.querySelectorAll('img').forEach(img => {
     elements.push({ element: img, type: 'img', src: img.src });
   });
 
-  // 2️⃣ Collect all elements with inline background-image
+  // 2️⃣ Collect inline background-image
   document.querySelectorAll('*[style]').forEach(el => {
     const bg = el.style.backgroundImage;
     const match = bg.match(/url\(["']?(.*?)["']?\)/);
-    if (match && match[1]) {
-      elements.push({ element: el, type: 'background-inline', src: match[1] });
-    }
+    if (match && match[1]) elements.push({ element: el, type: 'bg-inline', src: match[1] });
   });
 
-  // 3️⃣ Collect all elements with computed background-image (from external CSS)
+  // 3️⃣ Collect computed background-image (from external CSS)
   document.querySelectorAll('*').forEach(el => {
     const bg = getComputedStyle(el).backgroundImage;
     const match = bg && bg.match(/url\(["']?(.*?)["']?\)/);
-    if (match && match[1] && !elements.find(e => e.element === el)) {
-      elements.push({ element: el, type: 'background-computed', src: match[1] });
+    if (match && match[1]) {
+      // Avoid duplicates
+      if (!elements.find(e => e.element === el)) {
+        elements.push({ element: el, type: 'bg-computed', src: match[1] });
+      }
     }
   });
 
   console.log("Editable elements found:", elements);
 
-  // 4️⃣ Attach edit UI
+  // 4️⃣ Add edit buttons
   elements.forEach(({ element, type, src }) => {
-    if (element.parentElement.querySelector('.edit-btn')) return;
+    // Skip if already has a button
+    if (element.parentElement?.querySelector?.('.edit-btn')) return;
 
+    // Make sure the element is positioned so the button can overlay
     const wrapper = document.createElement('div');
     wrapper.style.position = 'relative';
     wrapper.style.display = getComputedStyle(element).display === 'block' ? 'block' : 'inline-block';
@@ -45,13 +50,14 @@ async function enableAllImageEditing() {
     wrapper.style.height = element.offsetHeight + 'px';
     wrapper.style.overflow = 'hidden';
 
-    // Insert wrapper before element
-    element.parentElement.insertBefore(wrapper, element);
-    wrapper.appendChild(element);
+    if (element.parentElement) {
+      element.parentElement.insertBefore(wrapper, element);
+      wrapper.appendChild(element);
+    }
 
-    // Pencil edit button
+    // ✏️ Edit button
     const editBtn = document.createElement('button');
-    editBtn.innerHTML = '🖉';
+    editBtn.textContent = '🖉';
     editBtn.className = 'edit-btn';
     Object.assign(editBtn.style, {
       position: 'absolute',
@@ -62,8 +68,7 @@ async function enableAllImageEditing() {
       borderRadius: '50%',
       padding: '5px',
       cursor: 'pointer',
-      zIndex: '9999',
-      transition: 'all 0.3s ease-in-out'
+      zIndex: '9999'
     });
     wrapper.appendChild(editBtn);
 
@@ -82,8 +87,9 @@ async function enableAllImageEditing() {
 
       const base64Content = await toBase64(file);
       const repoImagePath = extractRepoPath(src);
+
       if (!repoImagePath) {
-        alert('Unable to resolve GitHub file path from image src.');
+        alert(`❌ Can't resolve repo path for image: ${src}`);
         return;
       }
 
@@ -91,22 +97,23 @@ async function enableAllImageEditing() {
       const response = await fetch(
         `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${repoImagePath}`,
         {
-          method: "PUT",
+          method: 'PUT',
           headers: {
             Authorization: `token ${token}`,
-            Accept: "application/vnd.github+json",
-            "Content-Type": "application/json"
+            Accept: 'application/vnd.github+json',
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            message: repoImagePath,
-            content: base64Content.split(",")[1],
-            sha: sha,
-            branch: branch
+            message: `Update ${repoImagePath}`,
+            content: base64Content.split(',')[1],
+            sha,
+            branch
           })
         }
       );
 
       const result = await response.json();
+
       if (result.content && result.commit) {
         const blobSha = result.content.sha;
         const latest = await fetch(
@@ -114,12 +121,12 @@ async function enableAllImageEditing() {
           {
             headers: {
               Authorization: `token ${token}`,
-              Accept: "application/vnd.github+json"
+              Accept: 'application/vnd.github+json'
             }
           }
         );
         const latestData = await latest.json();
-        const imageBase64 = "data:image/png;base64," + latestData.content;
+        const imageBase64 = 'data:image/png;base64,' + latestData.content;
 
         if (type === 'img') {
           element.src = imageBase64;
@@ -127,44 +134,29 @@ async function enableAllImageEditing() {
           element.style.backgroundImage = `url(${imageBase64})`;
         }
       } else {
-        alert("Upload failed: " + result.message);
+        alert('Upload failed: ' + result.message);
       }
     });
   });
 }
 
-// Utilities remain the same:
-function extractRepoPath(src) {
-  try {
-    const url = new URL(src, window.location.origin);
-    const path = url.pathname;
-    if (path.includes("/assets/images/")) {
-      return "public" + path;
-    }
-  } catch (e) {
-    console.error("Invalid image src:", src);
-  }
-  return null;
-}
-
+// 🧩 Convert file to base64
 function toBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => resolve(reader.result);
-    reader.onerror = error => reject(error);
+    reader.onerror = reject;
   });
 }
 
+// 🧩 Get file SHA from GitHub
 async function getLatestSha(filePath) {
   try {
     const res = await fetch(
       `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${filePath}?ref=${branch}`,
       {
-        headers: {
-          Authorization: `token ${token}`,
-          Accept: "application/vnd.github+json"
-        }
+        headers: { Authorization: `token ${token}` }
       }
     );
     if (res.ok) {
@@ -172,10 +164,26 @@ async function getLatestSha(filePath) {
       return data.sha;
     }
   } catch (err) {
-    console.warn("SHA fetch failed or file not found, will create new.");
+    console.warn('SHA fetch failed; new file will be created.');
   }
   return null;
 }
 
-document.addEventListener('DOMContentLoaded', enableAllImageEditing);
+// 🧩 Smarter path resolver — handles relative, absolute, localhost, or remote URLs
+function extractRepoPath(src) {
+  try {
+    // Normalize URL (handles relative vs. absolute)
+    const url = new URL(src, window.location.origin);
+    const path = url.pathname;
 
+    // Match anything under assets/images, even nested
+    const idx = path.lastIndexOf('/assets/images/');
+    if (idx !== -1) {
+      const repoPath = 'public' + path.substring(idx);
+      return repoPath.replace(/^\/+/, '');
+    }
+  } catch (e) {
+    console.error('Invalid image src:', src, e);
+  }
+  return null;
+}
