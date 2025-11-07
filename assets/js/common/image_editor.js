@@ -123,7 +123,10 @@ function extractRepoPath(src) {
   try {
     const url = new URL(src, window.location.origin);
     const path = url.pathname;
-    if (path.includes("/assets/images/")) return path;
+    if (path.includes("/assets/images/")){
+      console.log(path);
+      return path;
+    }
   } catch { console.error("Invalid image src:", src); }
   return null;
 }
