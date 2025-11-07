@@ -119,17 +119,34 @@ function extractUrlFromBackground(el) {
   const match = bg.match(/url\(["']?(.*?)["']?\)/);
   return match ? match[1] : null;
 }
+// function extractRepoPath(src) {
+//   try {
+//     const url = new URL(src, window.location.origin);
+//     const path = url.pathname;
+//     if (path.includes("/assets/images/")){
+//       console.log(path);
+//       return path;
+//     }
+//   } catch { console.error("Invalid image src:", src); }
+//   return null;
+// }
 function extractRepoPath(src) {
   try {
-    const url = new URL(src, window.location.origin);
-    const path = url.pathname;
-    if (path.includes("/assets/images/")){
-      console.log(path);
-      return path;
+    // Make sure src is valid
+    if (!src) return null;
+
+    // Look for "assets/images" in the path
+    const index = src.indexOf("assets/images");
+    if (index !== -1) {
+      // Return everything from "assets/images" onward
+      return src.substring(index);
     }
-  } catch { console.error("Invalid image src:", src); }
+  } catch (e) {
+    console.error("Invalid image src:", src);
+  }
   return null;
 }
+
 function toBase64(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
