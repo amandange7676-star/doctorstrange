@@ -1,203 +1,162 @@
-/* ==========================================================
-   Dynamic Image Editor (handles <img> and background-image)
-   Works with dynamically loaded header/footer content
-   ========================================================== */
+const token = localStorage.getItem('feature_key');
+const repoOwner = localStorage.getItem('owner');
+const repoName = localStorage.getItem('repo_name');
+const branch = "main";
 
-(function () {
-  // ========== CONFIG ==========
-  const token = localStorage.getItem('feature_key'); 
-      const repoOwner = localStorage.getItem('owner');
-      const repoName = localStorage.getItem('repo_name');
-      let commitMessage = "Update test via API";
+// ======= Enable editable class and direct upload =======
+function enableAllImageEditing(root = document) {
+  // <img> tags
+  const imgs = root.querySelectorAll("img:not(.image-editable-initialized)");
+  imgs.forEach((img) => {
+    const src = img.getAttribute("src");
+    if (src && src.includes("assets/images")) {
+      img.classList.add("image-editable", "image-editable-initialized");
 
-      const branch = "main"; 
-  // Shared file input
+      img.addEventListener("click", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  e.stopImmediatePropagation(); // <--- stop any other click handlers
+  directEdit(img, false);
+}, true); // true = use capturing phase
+    }
+  });
+
+  // Elements with background images
+  const all = root.querySelectorAll("*:not(.image-editable-initialized)");
+  all.forEach((el) => {
+    const bgStyle = el.style.background || el.style.backgroundImage;
+    const computedBg = window.getComputedStyle(el).backgroundImage;
+    const bg = bgStyle || computedBg;
+
+    if (bg && bg.includes("url(")) {
+      const match = bg.match(/url\(["']?(.*?)["']?\)/);
+      if (match && match[1].includes("assets/images")) {
+        el.classList.add("image-editable", "image-editable-initialized");
+
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          directEdit(el, true);
+        });
+      }
+    }
+  });
+}
+
+// ======= Direct upload handler =======
+async function directEdit(element, isBackground) {
+  const originalSrc = isBackground
+    ? extractUrlFromBackground(element)
+    : element.getAttribute("src");
+
   const fileInput = document.createElement("input");
   fileInput.type = "file";
   fileInput.accept = "image/*";
   fileInput.style.display = "none";
   document.body.appendChild(fileInput);
+  fileInput.click();
 
-  let currentEl = null;
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const base64 = await toBase64(file);
 
-  // ========== Utilities ==========
-  function toBase64(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-
-  function extractRepoPath(src) {
-    if (!src) return null;
-    try {
-      if (src.startsWith("data:")) return null;
-      const url = new URL(src, window.location.origin);
-      const path = url.pathname;
-
-      const idx = path.indexOf("/assets/images/");
-      if (idx !== -1) return "public" + path.slice(idx);
-
-      const altIdx = path.indexOf("/images/");
-      if (altIdx !== -1) return "public" + path.slice(altIdx);
-    } catch (err) {
-      console.warn("extractRepoPath failed:", err);
+    const repoImagePath = extractRepoPath(originalSrc);
+    if (!repoImagePath) {
+      alert("Unable to resolve GitHub file path from image src.");
+      fileInput.remove();
+      return;
     }
-    return null;
-  }
 
-  async function getLatestSha(filePath) {
-    try {
-      const res = await fetch(
-        `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${filePath}?ref=${branch}`,
-        {
-          headers: {
-            Authorization: `token ${token}`,
-            Accept: "application/vnd.github+json"
-          }
-        }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        return data.sha;
-      }
-    } catch {
-      console.warn("SHA not found, creating new file...");
-    }
-    return null;
-  }
+    const sha = await getLatestSha(repoImagePath);
+    const commitMessage = `Update ${repoImagePath} via editor`;
 
-  async function uploadToGitHub(repoPath, base64, sha) {
-    const payload = {
-      message: `Update ${repoPath}`,
-      content: base64.split(",")[1],
-      branch
-    };
-    if (sha) payload.sha = sha;
-
-    const res = await fetch(
-      `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${repoPath}`,
+    const response = await fetch(
+      `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${repoImagePath}`,
       {
         method: "PUT",
         headers: {
           Authorization: `token ${token}`,
           Accept: "application/vnd.github+json",
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          message: commitMessage,
+          content: base64.split(",")[1],
+          sha: sha,
+          branch: branch,
+        }),
       }
     );
-    return res.json();
-  }
 
-  // ========== Core: Mark Editable Images ==========
-  function markEditableImages(root = document) {
-    if (!root.querySelectorAll) return;
+    const result = await response.json();
+    if (result.content && result.commit) {
+      const blobSha = result.content.sha;
+      const latest = await fetch(
+        `https://api.github.com/repos/${repoOwner}/${repoName}/git/blobs/${blobSha}`,
+        {
+          headers: {
+            Authorization: `token ${token}`,
+            Accept: "application/vnd.github+json",
+          },
+        }
+      );
+      const latestData = await latest.json();
+      const newBase64 = "data:image/png;base64," + latestData.content;
 
-    // Handle <img> elements
-    root.querySelectorAll("img").forEach(img => {
-      if (img.dataset.editableDone) return;
-      img.dataset.editableDone = "1";
-      img.classList.add("editable-image");
-      img.style.cursor = "pointer";
-      img.addEventListener("click", onClickEditable);
-    });
-
-    // Handle elements with background-image
-    root.querySelectorAll("*").forEach(el => {
-      if (el.dataset.editableBgDone) return;
-      const bg = getComputedStyle(el).backgroundImage;
-      const match = bg && bg.match(/url\(["']?(.*?)["']?\)/);
-      if (match && match[1]) {
-        el.dataset.editableBgDone = "1";
-        el.classList.add("editable-image");
-        el.style.cursor = "pointer";
-        el.addEventListener("click", onClickEditable);
-      }
-    });
-  }
-
-  // ========== Click handler ==========
-  function onClickEditable(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    currentEl = e.currentTarget;
-    fileInput.value = "";
-    fileInput.click();
-  }
-
-  // ========== File selection ==========
-  fileInput.addEventListener("change", async function () {
-    const file = this.files[0];
-    if (!file || !currentEl) return;
-
-    const base64 = await toBase64(file);
-
-    // Preview immediately
-    if (currentEl.tagName.toLowerCase() === "img") {
-      currentEl.src = base64;
+      if (isBackground) element.style.backgroundImage = `url(${newBase64})`;
+      else element.src = newBase64;
     } else {
-      currentEl.style.backgroundImage = `url(${base64})`;
+      alert("Upload failed: " + (result.message || "Unknown error"));
     }
 
-    // Get original src or bg URL
-    let src = null;
-    if (currentEl.tagName.toLowerCase() === "img") {
-      src = currentEl.getAttribute("src");
-    } else {
-      const bg = currentEl.style.backgroundImage || getComputedStyle(currentEl).backgroundImage;
-      const match = bg.match(/url\(["']?(.*?)["']?\)/);
-      src = match ? match[1] : null;
-    }
-
-    const repoPath = extractRepoPath(src);
-    if (!repoPath) {
-      alert("Cannot resolve GitHub path for this image. Updated locally only.");
-      currentEl = null;
-      return;
-    }
-
-    const sha = await getLatestSha(repoPath);
-    const uploadResult = await uploadToGitHub(repoPath, base64, sha);
-
-    if (uploadResult && uploadResult.commit) {
-      alert("Image updated successfully on GitHub.");
-    } else {
-      alert("Upload failed. Check console for details.");
-      console.error(uploadResult);
-    }
-
-    currentEl = null;
+    fileInput.remove();
   });
+}
 
-  // ========== Observe for dynamic content ==========
-  const observer = new MutationObserver(mutations => {
-    mutations.forEach(m => {
-      m.addedNodes.forEach(node => {
-        if (node.nodeType === 1) markEditableImages(node);
+// ======= Helpers =======
+function extractUrlFromBackground(el) {
+  const bg = window.getComputedStyle(el).backgroundImage;
+  const match = bg.match(/url\(["']?(.*?)["']?\)/);
+  return match ? match[1] : null;
+}
+function extractRepoPath(src) {
+  try {
+    const url = new URL(src, window.location.origin);
+    const path = url.pathname;
+    if (path.includes("/assets/images/")) return "public" + path;
+  } catch { console.error("Invalid image src:", src); }
+  return null;
+}
+function toBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.readAsDataURL(file);
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+  });
+}
+async function getLatestSha(filePath) {
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${filePath}?ref=${branch}`,
+      {
+        headers: { Authorization: `token ${token}`, Accept: "application/vnd.github+json" }
+      }
+    );
+    if (res.ok) return (await res.json()).sha;
+  } catch { console.warn("SHA fetch failed."); }
+  return null;
+}
+
+// ======= Init =======
+document.addEventListener("DOMContentLoaded", () => {
+  enableAllImageEditing();
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === 1) enableAllImageEditing(node);
       });
     });
   });
   observer.observe(document.body, { childList: true, subtree: true });
-
-  // ========== Initial run ==========
-  document.addEventListener("DOMContentLoaded", () => {
-    markEditableImages(document);
-  });
-
-  // ========== Optional CSS styling ==========
-  const style = document.createElement("style");
-  style.textContent = `
-    .editable-image {
-      transition: filter 0.2s ease, outline 0.2s ease;
-    }
-    .editable-image:hover {
-      filter: brightness(0.9);
-      outline: 2px dashed #00bcd4;
-      outline-offset: 3px;
-    }
-  `;
-  document.head.appendChild(style);
-})();
+});
