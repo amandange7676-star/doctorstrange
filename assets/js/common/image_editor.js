@@ -6,30 +6,20 @@ const branch = "main";
 // ======= Enable editable class and direct upload =======
 function enableAllImageEditing(root = document) {
   // <img> tags
-//   const imgs = root.querySelectorAll("img:not(.image-editable-initialized)");
-//   imgs.forEach((img) => {
-//     const src = img.getAttribute("src");
-//     if (src && src.includes("assets/images")) {
-//       img.classList.add("image-editable", "image-editable-initialized");
+  const imgs = root.querySelectorAll("img:not(.image-editable-initialized)");
+  imgs.forEach((img) => {
+    const src = img.getAttribute("src");
+    if (src && src.includes("assets/images")) {
+      img.classList.add("image-editable", "image-editable-initialized");
 
-//       img.addEventListener("click", (e) => {
-//   e.preventDefault();
-//   e.stopPropagation();
-//   e.stopImmediatePropagation(); // <--- stop any other click handlers
-//   directEdit(img, false);
-// }, true); // true = use capturing phase
-//     }
-  const imgs = document.querySelectorAll("img.image-editable:not(.image-editable-initialized)");
-imgs.forEach(img => {
-  img.classList.add("image-editable-initialized");
-  img.addEventListener("click", function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    console.log("Editing image:", img.src); // DEBUG
-    directEdit(img, false);
-  }, true); // use capturing
-});
+      img.addEventListener("click", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  e.stopImmediatePropagation(); // <--- stop any other click handlers
+  directEdit(img, false);
+}, true); // true = use capturing phase
+    }
+
   });
 
   // Elements with background images
