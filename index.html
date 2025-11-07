@@ -95,16 +95,23 @@
             <script src="assets/js/ScrollTrigger.min.js"></script>
             <script src="assets/js/Observer.min.js"></script>
             <script src="assets/js/gsap.effects.js"></script>
-<script src="assets/js/common/html_changer.js"></script>
+			<script src="assets/js/common/html_changer.js"></script>
 			<script src="assets/js/common/windows_postmessage.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/owl.carousel.min.js"></script>
+             <!-- <script src="assets/js/common_js/image_editor.js"></script>
+			<!-- <script src="assets/js/common_js/image_editor.js"></script> --> -->
+			<!-- <script src="assets/js/common_js/replace_image.js"></script> -->
+
+			<script src="assets/js/common/image_editor.js"></script>
+
             <script src="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/owl.carousel.min.js"></script>
             <script>
                 var fileName = document.title || "index";
 
                 $(document).ready(function () {
                 /* Start code to load js and css files properly on local server or production server: NOte: this is the workwround, need to fix this */
-                loadHeaderFooter("header", "assets/doctor/doctor/header.html");
-                loadHeaderFooter("footer", "assets/doctor/doctor/footer.html");
+                loadHeaderFooter("header", "assets/new_one/new_one/header.html");
+                loadHeaderFooter("footer", "assets/new_one/new_one/footer.html");
                 /*  End code */
 
                 /*  Start code to load js and css files properly on Githubpages  */
@@ -121,7 +128,7 @@
                             return;
                         }
 
-                        $("#" + id).find("a").addClass("edit-site");
+                        // $("#" + id).find("a").addClass("edit-site");
 
                         if (id === "header") {
                             if (fileName.toLowerCase() === "index" || fileName.toLowerCase() === "home") {
@@ -133,13 +140,15 @@
                                     .text(fileName.charAt(0).toUpperCase() + fileName.slice(1));
                             }
                         }
+						 // Force mark editable images inside the loaded fragment
+					     // enableAllImageEditing();
+						 enableAllImageEditing(document.getElementById(id));
                     });
                 }
             </script>
                         <script src="assets/js/middle-section.js"></script>
 			<!-- <script src="assets/js/common/replace_image.js"></script> -->
-			<script src="assets/js/common/image_editor.js"></script>
-
+			
         
         
 
